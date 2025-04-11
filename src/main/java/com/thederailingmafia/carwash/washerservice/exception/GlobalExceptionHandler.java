@@ -31,15 +31,7 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(errorDetails, HttpStatus.BAD_REQUEST);
     }
 
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex) {
-        Map<String, Object> errorDetails = new HashMap<>();
-        errorDetails.put("message", "An unexpected error occurred");
-        errorDetails.put("timestamp", LocalDateTime.now());
-        errorDetails.put("status", HttpStatus.INTERNAL_SERVER_ERROR.value());
 
-        return new ResponseEntity<>(errorDetails, HttpStatus.INTERNAL_SERVER_ERROR);
-    }
 }
 
 
