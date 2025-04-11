@@ -5,60 +5,35 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import javax.crypto.SecretKey;
+
 import java.nio.charset.StandardCharsets;
-import java.util.Date;
+import java.security.Key;
 
 @Component
 public class JwtUtil {
+    @Value("${jwt.secret}")
+    private String secret;
 
-    private  final SecretKey secretKey;
-
-    public JwtUtil(@Value("${jwt.secret}") String secret) {
-        this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
-    }
-
-    @Value("${jwt.expiration}")
-    private Long expiration;
-
-    public String generateToken(String email,String role) {
-        return Jwts.builder()
-                .setSubject(email)
-                .claim("role",role)
-                .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis()+expiration))
-                .signWith(secretKey)
-                .compact();
-    }
-    // Extract email from token
     public String getEmailFromToken(String token) {
-        Claims claims = getClaimsFromToken(token);
-        return claims.getSubject();
+        return getClaims(token).getSubject();
     }
 
-    // Extract role from token
-    public String getRoleFromToken(String token) {
-        Claims claims = getClaimsFromToken(token);
-        return (String) claims.get("role");
+    public String extractRole(String token) {
+        return getClaims(token).get("role", String.class);
     }
 
-    // Validate token
-    public boolean validateToken(String token,String email) {
-        return (email.equals(getEmailFromToken(token)) );
+    public boolean validateToken(String token, String email) {
+        Claims claims = getClaims(token);
+        return claims.getSubject().equals(email) && !claims.getExpiration().before(new java.util.Date());
     }
 
-
-
-
-    private Claims getClaimsFromToken(String token) {
-        return Jwts.parser()
-                .setSigningKey(secretKey)
+    private Claims getClaims(String token) {
+        Key key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        return Jwts
+                .parserBuilder()
+                .setSigningKey(key)
                 .build()
                 .parseClaimsJws(token)
                 .getBody();
     }
-
-
 }
-
-
