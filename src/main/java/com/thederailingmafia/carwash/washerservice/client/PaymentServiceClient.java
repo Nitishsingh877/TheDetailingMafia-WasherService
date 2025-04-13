@@ -12,5 +12,6 @@ public interface PaymentServiceClient {
     @PostMapping("/api/payments/process")
     PaymentResponse processPayment(@RequestBody PaymentRequest request,
                                    @RequestHeader("Authorization") String authorization,
-                                   @RequestHeader("X-User-Email") String userEmail);
+                                    @RequestHeader("Customer-Email") String customerEmail
+    );
 }

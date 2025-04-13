@@ -1,17 +1,21 @@
 package com.thederailingmafia.carwash.washerservice.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.thederailingmafia.carwash.washerservice.client.OrderServiceClient;
 import com.thederailingmafia.carwash.washerservice.client.PaymentServiceClient;
 import com.thederailingmafia.carwash.washerservice.dto.*;
 import com.thederailingmafia.carwash.washerservice.model.Invoice;
 import com.thederailingmafia.carwash.washerservice.repository.InvoiceRepository;
 import feign.FeignException;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -23,6 +27,11 @@ public class WasherService {
     private PaymentServiceClient paymentServiceClient;
     @Autowired
     private InvoiceRepository invoiceRepository;
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
 
 
     public List<WashRequestResponse> getWashRequest(String washerEmail) {
@@ -68,6 +77,7 @@ public class WasherService {
         try {
             OrderResponse updatedOrder = orderServiceClient.updateOrder(orderId, order);
             System.out.println("Updated order: " + updatedOrder);
+            publishWasherEvent(orderId, washerEmail, "washer.accepted");
             return updatedOrder;
         } catch (FeignException e) {
             System.out.println("Failed to update order: " + e.getMessage());
@@ -84,12 +94,18 @@ public class WasherService {
             throw new RuntimeException("Washer status does not match");
         }
         order.setStatus("CANCELED");
+        publishWasherEvent(orderId, washerEmail, "washer.rejected");
         return orderServiceClient.updateOrder(orderId,order);
     }
 
     public InvoiceResponse generateInvoice(InvoiceRequest request, String washerEmail, String authorization) {
         // Validate order
-        OrderResponse order = orderServiceClient.getOrderById(request.getOrderId());
+        OrderResponse order;
+        try {
+            order = orderServiceClient.getOrderById(request.getOrderId());
+        } catch (FeignException e) {
+            throw new RuntimeException("Failed to fetch order: " + e.status(), e);
+        }
         if (!"ACCEPTED".equals(order.getStatus())) {
             throw new RuntimeException("Order is not in ACCEPTED status");
         }
@@ -103,12 +119,19 @@ public class WasherService {
         paymentRequest.setAmount(request.getAmount());
         paymentRequest.setInvoiceAmount(request.getAmount());
 
-        // Process payment with Authorization and X-User-Email headers
-        PaymentResponse paymentResponse = paymentServiceClient.processPayment(
-                paymentRequest,
-                authorization,
-                washerEmail
-        );
+        // Process payment with customer email
+        PaymentResponse paymentResponse;
+        try {
+            System.out.println("Calling payment service for customer: " + order.getCustomerEmail());
+            paymentResponse = paymentServiceClient.processPayment(
+                    paymentRequest,
+                    authorization,
+                    order.getCustomerEmail()
+            );
+        } catch (FeignException e) {
+            System.err.println("payment failed: " + e.getMessage());
+            throw new RuntimeException("Failed to process payment: " + e.status(), e);
+        }
 
         // Save invoice
         Invoice invoice = new Invoice();
@@ -117,6 +140,8 @@ public class WasherService {
         invoice.setWasherEmail(washerEmail);
         invoice.setCreatedAt(LocalDateTime.now());
         Invoice savedInvoice = invoiceRepository.save(invoice);
+
+        publishInvoiceEvent(savedInvoice, paymentResponse.getPaymentId(), washerEmail);
 
         // Create response
         InvoiceResponse response = new InvoiceResponse();
@@ -138,4 +163,33 @@ public class WasherService {
         response.setCreatedAt(invoice.getCreatedAt());
         return response;
     }
+
+    private void publishWasherEvent(Long orderId, String washerEmail, String eventType) {
+        try {
+            Map<String, Object> event = new HashMap<>();
+            event.put("event", eventType);
+            event.put("orderId", orderId);
+            event.put("washerEmail", washerEmail);
+            rabbitTemplate.convertAndSend("carwash.events", "notification." + eventType, objectMapper.writeValueAsString(event));
+            System.out.println("Published event: " + eventType + " for order " + orderId);
+        } catch (Exception e) {
+            System.err.println("Error publishing event " + eventType + ": " + e.getMessage());
+        }
+    }
+    private void publishInvoiceEvent(Invoice invoice, String paymentId, String washerEmail) {
+        try {
+            Map<String, Object> event = new HashMap<>();
+            event.put("event", "washer.invoice_generated");
+            event.put("orderId", invoice.getOrderId());
+            event.put("invoiceId", invoice.getId());
+            event.put("paymentId", paymentId);
+            event.put("amount", invoice.getAmount());
+            event.put("washerEmail", washerEmail);
+            rabbitTemplate.convertAndSend("carwash.events", "notification.washer.invoice_generated", objectMapper.writeValueAsString(event));
+            System.out.println("Published event: washer.invoice_generated for invoice " + invoice.getId());
+        } catch (Exception e) {
+            System.err.println("Error publishing event washer.invoice_generated: " + e.getMessage());
+        }
+    }
+
 }
