@@ -60,16 +60,16 @@ public class WasherController {
     }
 
     @PostMapping("/invoice")
+    @PreAuthorize("hasAuthority('WASHER')")
     public ResponseEntity<?> createInvoice(
             @RequestBody InvoiceRequest request,
-            @RequestHeader("Authorization") String authorization,
-            @RequestHeader(value = "X-User-Email", required = false) String userEmail
+            @RequestHeader("Authorization") String authorization
     ) {
         try {
-            if (userEmail == null || userEmail.isEmpty()) {
-                userEmail = "abc1222@gmail.com"; // Fallback to match JWT's sub
-            }
-            InvoiceResponse response = washerService.generateInvoice(request, userEmail, authorization);
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            String washerEmail = auth.getName();
+            System.out.println("Creating invoice for washer:" + washerEmail);
+            InvoiceResponse response = washerService.generateInvoice(request, washerEmail, authorization);
             return ResponseEntity.ok(response);
         } catch (FeignException.Unauthorized e) {
             return ResponseEntity.status(401).body("Authentication failed: " + e.getMessage());
