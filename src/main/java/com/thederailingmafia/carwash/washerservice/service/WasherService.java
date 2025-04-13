@@ -1,6 +1,7 @@
 package com.thederailingmafia.carwash.washerservice.service;
 
 import com.thederailingmafia.carwash.washerservice.client.OrderServiceClient;
+import com.thederailingmafia.carwash.washerservice.client.PaymentServiceClient;
 import com.thederailingmafia.carwash.washerservice.dto.*;
 import com.thederailingmafia.carwash.washerservice.model.Invoice;
 import com.thederailingmafia.carwash.washerservice.repository.InvoiceRepository;
@@ -9,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -18,7 +20,10 @@ public class WasherService {
     @Autowired
     private OrderServiceClient orderServiceClient;
     @Autowired
+    private PaymentServiceClient paymentServiceClient;
+    @Autowired
     private InvoiceRepository invoiceRepository;
+
 
     public List<WashRequestResponse> getWashRequest(String washerEmail) {
         try{
@@ -82,21 +87,48 @@ public class WasherService {
         return orderServiceClient.updateOrder(orderId,order);
     }
 
-    public InvoiceResponse genrateInvoice(InvoiceRequest request,String washerEmail) {
+    public InvoiceResponse generateInvoice(InvoiceRequest request, String washerEmail, String authorization) {
+        // Validate order
         OrderResponse order = orderServiceClient.getOrderById(request.getOrderId());
-        if(!washerEmail.equals(order.getWasherEmail()) || !"ACCEPTED".equals(order.getStatus())){
-            throw new RuntimeException("Washer email does not match");
+        if (!"ACCEPTED".equals(order.getStatus())) {
+            throw new RuntimeException("Order is not in ACCEPTED status");
         }
+        if (!washerEmail.equals(order.getWasherEmail())) {
+            throw new RuntimeException("Washer email does not match order");
+        }
+
+        // Create payment request
+        PaymentRequest paymentRequest = new PaymentRequest();
+        paymentRequest.setOrderId(request.getOrderId());
+        paymentRequest.setAmount(request.getAmount());
+        paymentRequest.setInvoiceAmount(request.getAmount());
+
+        // Process payment with Authorization and X-User-Email headers
+        PaymentResponse paymentResponse = paymentServiceClient.processPayment(
+                paymentRequest,
+                authorization,
+                washerEmail
+        );
+
+        // Save invoice
         Invoice invoice = new Invoice();
         invoice.setOrderId(request.getOrderId());
+        invoice.setAmount(request.getAmount());
         invoice.setWasherEmail(washerEmail);
-        invoice.setAmount(request.getAmount());
-        invoice.setAmount(request.getAmount());
-
+        invoice.setCreatedAt(LocalDateTime.now());
         Invoice savedInvoice = invoiceRepository.save(invoice);
 
-        return  mapToResponse(savedInvoice);
+        // Create response
+        InvoiceResponse response = new InvoiceResponse();
+        response.setId(savedInvoice.getId());
+        response.setOrderId(savedInvoice.getOrderId());
+        response.setAmount(savedInvoice.getAmount());
+        response.setCreatedAt(savedInvoice.getCreatedAt());
+        response.setPaymentId(paymentResponse.getPaymentId());
+        response.setClientSecret(paymentResponse.getClientSecret());
+        return response;
     }
+
 
     private InvoiceResponse mapToResponse(Invoice invoice) {
         InvoiceResponse response = new InvoiceResponse();

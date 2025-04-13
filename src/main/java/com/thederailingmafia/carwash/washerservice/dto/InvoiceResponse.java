@@ -10,4 +10,7 @@ public class InvoiceResponse {
     private Long orderId;
     private Double amount;
     private LocalDateTime createdAt;
+    private String paymentId;
+    private String clientSecret;
+
 }

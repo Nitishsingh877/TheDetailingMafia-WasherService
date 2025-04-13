@@ -1,10 +1,9 @@
 package com.thederailingmafia.carwash.washerservice.controller;
 
-import com.thederailingmafia.carwash.washerservice.dto.InvoiceRequest;
-import com.thederailingmafia.carwash.washerservice.dto.InvoiceResponse;
-import com.thederailingmafia.carwash.washerservice.dto.OrderResponse;
-import com.thederailingmafia.carwash.washerservice.dto.WashRequestResponse;
+import com.thederailingmafia.carwash.washerservice.client.PaymentServiceClient;
+import com.thederailingmafia.carwash.washerservice.dto.*;
 import com.thederailingmafia.carwash.washerservice.service.WasherService;
+import feign.FeignException;
 import io.swagger.v3.oas.annotations.Operation;
 import org.hibernate.query.Order;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +21,9 @@ public class WasherController {
 
     @Autowired
     private WasherService washerService;
+
+    @Autowired
+    private PaymentServiceClient paymentServiceClient;
 
     @GetMapping("/health")
     public String health() {
@@ -58,12 +60,26 @@ public class WasherController {
     }
 
     @PostMapping("/invoice")
-    @PreAuthorize("hasAnyAuthority('CUSTOMER','ADMIN')")
-    public ResponseEntity<InvoiceResponse> generateInvoice(@RequestBody InvoiceRequest request) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        String washerEmail = auth.getName();
-        InvoiceResponse response = washerService.genrateInvoice(request, washerEmail);
-        return ResponseEntity.status(201).body(response);
+    public ResponseEntity<?> createInvoice(
+            @RequestBody InvoiceRequest request,
+            @RequestHeader("Authorization") String authorization,
+            @RequestHeader(value = "X-User-Email", required = false) String userEmail
+    ) {
+        try {
+            if (userEmail == null || userEmail.isEmpty()) {
+                userEmail = "abc1222@gmail.com"; // Fallback to match JWT's sub
+            }
+            InvoiceResponse response = washerService.generateInvoice(request, userEmail, authorization);
+            return ResponseEntity.ok(response);
+        } catch (FeignException.Unauthorized e) {
+            return ResponseEntity.status(401).body("Authentication failed: " + e.getMessage());
+        } catch (FeignException.Forbidden e) {
+            return ResponseEntity.status(403).body("Access denied: " + e.getMessage());
+        } catch (FeignException e) {
+            return ResponseEntity.status(e.status()).body("Payment service error: " + e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("Internal server error: " + e.getMessage());
+        }
     }
-
 }
+

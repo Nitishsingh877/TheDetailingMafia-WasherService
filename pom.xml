@@ -126,7 +126,11 @@
 			<groupId>org.springframework.cloud</groupId>
 			<artifactId>spring-cloud-starter-openfeign</artifactId>
 		</dependency>
-
+		<dependency>
+			<groupId>com.stripe</groupId>
+			<artifactId>stripe-java</artifactId>
+			<version>25.6.0</version> <!-- Latest as of April 2025 -->
+		</dependency>
 
 	</dependencies>
 
