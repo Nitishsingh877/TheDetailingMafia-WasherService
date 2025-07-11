@@ -38,6 +38,8 @@ public class WasherController {
         String washerEmail = auth.getName();
         System.out.println("washerEmail: " + washerEmail);
         List<WashRequestResponse> request = washerService.getWashRequest(washerEmail);
+
+        System.out.println(request);
         return request;
     }
 
@@ -46,7 +48,7 @@ public class WasherController {
     public OrderResponse acceptWashRequest(@PathVariable Long orderId) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         String washerEmail = auth.getName();
-        OrderResponse response  = washerService.acceptWashRequest(orderId, washerEmail);
+        OrderResponse response = washerService.acceptWashRequest(orderId, washerEmail);
         return response;
     }
 
@@ -70,7 +72,9 @@ public class WasherController {
             String washerEmail = auth.getName();
             System.out.println("Creating invoice for washer:" + washerEmail);
             InvoiceResponse response = washerService.generateInvoice(request, washerEmail, authorization);
+            System.out.println(response);
             return ResponseEntity.ok(response);
+
         } catch (FeignException.Unauthorized e) {
             return ResponseEntity.status(401).body("Authentication failed: " + e.getMessage());
         } catch (FeignException.Forbidden e) {
@@ -81,5 +85,32 @@ public class WasherController {
             return ResponseEntity.status(500).body("Internal server error: " + e.getMessage());
         }
     }
-}
 
+
+    @PostMapping("/done/{orderId}")
+    @PreAuthorize("hasAuthority('WASHER')")
+    public ResponseEntity<?> markAsCompleted(@PathVariable Long orderId) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String washerEmail = auth.getName();
+
+        try {
+            // ✅ Check payment status before completing the order
+            PaymentResponse paymentStatus = paymentServiceClient.getPaymentStatus(orderId);
+
+            if (!"SUCCESS".equalsIgnoreCase(paymentStatus.getStatus()) && !"succeeded".equalsIgnoreCase(paymentStatus.getStatus())) {
+                return ResponseEntity.badRequest().body(" Payment not completed. Cannot mark booking as done.");
+            }
+
+            // ✅ Proceed to update booking status
+            OrderResponse response = washerService.markBookingAsCompleted(orderId, washerEmail);
+            return ResponseEntity.ok(response);
+
+        } catch (FeignException.NotFound e) {
+            return ResponseEntity.status(404).body(" Order not found: " + e.getMessage());
+        } catch (FeignException e) {
+            return ResponseEntity.status(e.status()).body(" Payment service error: " + e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(" Internal server error: " + e.getMessage());
+        }
+    }
+}

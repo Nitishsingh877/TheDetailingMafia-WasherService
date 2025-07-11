@@ -9,5 +9,6 @@ public class WashRequestResponse {
     private Long carId;
     private String status;
     private String washerEmail;
+    private String paymentStatus;
 //    private String washerEmail;
 }
