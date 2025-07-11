@@ -14,4 +14,5 @@ public class OrderResponse {
     private String status;
     private LocalDateTime scheduledTime;
     private LocalDateTime createdAt;
+    private String paymentStatus;
 }

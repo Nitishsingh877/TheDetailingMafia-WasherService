@@ -14,4 +14,5 @@ public class PaymentResponse {
     private String status;
     private String orderStatus;
     private String clientSecret;
+    private String paymentUrl;
 }

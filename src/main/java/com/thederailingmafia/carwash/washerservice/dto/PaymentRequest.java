@@ -6,10 +6,10 @@ import lombok.Data;
 public class PaymentRequest {
     private Long orderId;
     private Double amount; // Invoice amount
-    private Double invoiceAmount; // From WasherService invoice
+    private Double invoiceAmount;// From WasherService invoice
 
-    public PaymentRequest(Long orderId, Double amount) {
-    }
+
+
 
     public PaymentRequest() {
 
